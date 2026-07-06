@@ -109,22 +109,24 @@ pub fn fit_quantiles(
     seed: u64,
 ) -> (Vec<f64>, Vec<Vec<f64>>) {
     let n_quantiles = n_quantiles_req.min(n_rows).max(1);
-    // np.linspace(0, 1, n_quantiles): multiply i by step (not divide i by n-1)
-    // to match numpy's bit pattern (7.0/9.0 != 7.0*(1.0/9.0) at i=7, n=10).
-    let step = if n_quantiles > 1 {
-        1.0 / (n_quantiles - 1) as f64
+    // np.linspace(0, 1, n_quantiles). For num==1 numpy returns [start] == [0.0],
+    // not the endpoint. For num>1 multiply i by step (not divide i by n-1) to
+    // match numpy's bit pattern (7.0/9.0 != 7.0*(1.0/9.0) at i=7, n=10) and pin
+    // the last landmark to exactly 1.0.
+    let references: Vec<f64> = if n_quantiles == 1 {
+        vec![0.0]
     } else {
-        0.0
+        let step = 1.0 / (n_quantiles - 1) as f64;
+        (0..n_quantiles)
+            .map(|i| {
+                if i == n_quantiles - 1 {
+                    1.0
+                } else {
+                    i as f64 * step
+                }
+            })
+            .collect()
     };
-    let references: Vec<f64> = (0..n_quantiles)
-        .map(|i| {
-            if i == n_quantiles - 1 {
-                1.0
-            } else {
-                i as f64 * step
-            }
-        })
-        .collect();
 
     // Pre-compute shared subsample row indices when n_rows > k (one shuffle, all columns).
     let shared_indices: Option<Vec<usize>> = subsample.and_then(|k| {

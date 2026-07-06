@@ -284,6 +284,41 @@ fn normal_ties_q5_rel1e12() {
     assert_normal_rel(&got, &want, 1e-12, "ties_normal_q5");
 }
 
+// ── GOLDEN 9: n_quantiles=1 (single landmark), uniform ───────────────────────
+// references_ = linspace(0,1,1) = [0.0], so every finite value maps to 0.
+
+#[test]
+fn uniform_degenerate_q1_bit_exact() {
+    let input = golden("degenerate_3x2.tsv");
+    let out = run(&[input.to_str().unwrap(), "--n-quantiles", "1"]);
+    let got = parse_tsv(&out);
+    let want = parse_hex_golden(
+        &std::fs::read_to_string(golden("degenerate_3x2_uniform_q1.hex")).unwrap(),
+    );
+    assert_bit_exact(&got, &want, "degenerate_3x2_uniform_q1");
+}
+
+// ── GOLDEN 10: n_quantiles=1, normal ─────────────────────────────────────────
+// Normal boundary masks use the ±BOUNDS_THRESHOLD band, so the single-landmark
+// column maps to [-CLIP_MAX, +CLIP_MAX, +CLIP_MAX] — the lower bound only claims
+// the minimum, the upper bound claims everything else.
+
+#[test]
+fn normal_degenerate_q1_rel1e12() {
+    let input = golden("degenerate_3x2.tsv");
+    let out = run(&[
+        input.to_str().unwrap(),
+        "--n-quantiles",
+        "1",
+        "--output-distribution",
+        "normal",
+    ]);
+    let got = parse_tsv(&out);
+    let want =
+        parse_tsv_golden(&std::fs::read_to_string(golden("degenerate_3x2_normal_q1.tsv")).unwrap());
+    assert_normal_rel(&got, &want, 1e-12, "degenerate_3x2_normal_q1");
+}
+
 // ── Stdin / portable tempdir smoke test ──────────────────────────────────────
 
 #[test]

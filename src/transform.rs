@@ -3,7 +3,10 @@
 //! Forward map:
 //!   1. Double-interp averaging (handles ties):
 //!      `0.5 * (interp(x, quantiles, refs) - interp(-x, -quantiles[::-1], -refs[::-1]))`
-//!   2. Force boundary values to exactly 0/1.
+//!   2. Force boundary values to 0/1. Uniform detects boundaries by exact equality
+//!      (`x == quantiles[0]` / `x == quantiles[-1]`); normal detects them by a
+//!      `±BOUNDS_THRESHOLD` band (`x - t < lo` / `x + t > hi`), matching sklearn's
+//!      distribution-dependent bound masks.
 //!   3. For normal output: apply `ndtri` then clip to `[CLIP_MIN, CLIP_MAX]`.
 //!
 //! Uniform output is purely linear interpolation → BIT-EXACT vs sklearn (0 ULP).
@@ -11,6 +14,9 @@
 //! differ ≤1 ULP, so compat tolerance is ≤1e-12 relative.
 
 use crate::ndtri::{CLIP_MAX, CLIP_MIN, ndtri};
+
+/// sklearn `BOUNDS_THRESHOLD` — the band width for normal-output boundary masks.
+const BOUNDS_THRESHOLD: f64 = 1e-7;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputDistribution {
@@ -60,16 +66,20 @@ pub fn transform_col(
         }
         let x = *v;
 
-        // sklearn uses `== lower/upper_bound_x` for uniform boundary detection.
-        let at_lower = x == lower_bound_x;
-        let at_upper = x == upper_bound_x;
+        let (at_lower, at_upper) = match dist {
+            OutputDistribution::Uniform => (x == lower_bound_x, x == upper_bound_x),
+            OutputDistribution::Normal => (
+                x - BOUNDS_THRESHOLD < lower_bound_x,
+                x + BOUNDS_THRESHOLD > upper_bound_x,
+            ),
+        };
 
         // Double-interp averaging (ties handling, per sklearn comment).
         let fwd = np_interp(x, quantiles, references);
         let rev = -np_interp(-x, &q_rev, &r_rev);
         let mut y = 0.5 * (fwd + rev);
 
-        // Exact boundary values must land at exactly 0 / 1 (sklearn sets them after interp).
+        // sklearn sets upper then lower after interp, so lower wins on a tie.
         if at_upper {
             y = 1.0;
         }
